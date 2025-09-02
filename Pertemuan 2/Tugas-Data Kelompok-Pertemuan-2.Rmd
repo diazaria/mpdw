@@ -1,0 +1,182 @@
+---
+title: "MPDW5"
+output: html_document
+date: "2025-08-28"
+---
+
+##Library
+```{r}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+library(lmtest)
+library(orcutt)
+```
+
+##1. Persiapan Data
+```{r}
+s = read.csv("D:/csv kuliah/MPDW5.csv")
+s
+```
+
+##2. Membuat Model Awal (Tersangka Utama)
+Kita akan membuat model regresi linear sederhana untuk memprediksi `ipm` berdasarkan `tahun`. Di tahap ini, kita berasumsi modelnya baik-baik saja.
+```{r}
+#Regresi IPM Bengkulu
+reg = lm(IPM ~ Tahun, data = s)
+summary(reg)
+```
+Nilai R-Squared sangat tinggi (0.9856) dan koefisien `tahun` sangat signifikan (p-value < 0.001). Jika kita berhenti di sini, kita akan menyimpulkan ini adalah model yang fantastis. Tapi seorang detektif yang baik tidak akan berhenti di permukaan.
+
+##3. Diagnosis (Investigasi Sisaan)
+
+### 3.1. Diagnosis Visual
+```{r}
+# Ambil sisaan dari model
+sisa <- residuals(reg)
+
+# Plot sisaan terhadap waktu
+plot(s$Tahun, sisa, type="o", pch=20, col="red",
+     main="Plot Sisaan vs Waktu", xlab="Tahun", ylab="Sisaan")
+abline(h=0, lty=2) # Garis referensi di y=0
+
+#Plot ACF
+acf(reg$residuals, main="ACF Residuals Regresi IPM Bengkulu")
+#Plot residual vs order
+plot(reg$residuals, type="b", main="Plot Residuals Regresi IPM Bengkulu", ylab="Residuals", xlab="Order")
+```
+Plot di atas masih menunjukkan autokorelasi
+
+### 3.2. Diagnosis Formal (Uji Durbin-Watson)
+
+Visual saja tidak cukup, kita butuh bukti formal. Kita gunakan Uji Durbin-Watson.
+
+-   **H0 (Hipotesis Nol)**: Tidak ada autokorelasi. Sisaan saling bebas.
+
+-   **H1 (Hipotesis Alternatif)**: Ada autokorelasi.
+```{r}
+#dwtest
+library(lmtest)
+dwtest(reg)
+```
+
+**Hasil Investigasi:**
+
+-   P-value yang dihasilkan **sangat kecil (0.00000839)**, yaitu di bawah tingkat signifikansi 0.05.
+
+-   Kesimpulan: Kita **menolak H0**. Bukti sudah kuat. Model kita **terbukti menderita autokorelasi**.
+
+##4. Penanganan
+### Metode 2: Cochrane-Orcutt
+
+```{r}
+library(orcutt)
+co <- cochrane.orcutt(reg)
+summary(co)
+
+# rho paling optimum
+rho <- co$rho
+cat("Rho optimum:", rho)
+```
+
+**Hasil Penanganan (C-O):**
+
+-   Lihat nilai **rho** yang diestimasi. Ini adalah "dosis" yang digunakan untuk memperbaiki model.
+
+-   Lihat statistik **Durbin-Watson baru**. Nilainya sekarang jauh lebih dekat ke 2, dan p-value-nya (\> 0.05) menunjukkan bahwa **autokorelasi sudah berhasil diatasi**.
+
+-   Perhatikan koefisien `(Intercept)` dan `tahun` yang baru. Ini adalah estimasi yang lebih valid.
+
+**Verifikasi Manual:**
+```{r}
+ipm.tr <- s$IPM[-1] - s$IPM[-12]*rho
+
+tahun.tr <- s$Tahun[-1] - s$Tahun[-12]*rho
+model_co_manual <- lm(ipm.tr~tahun.tr)
+
+b0_co_manual <- coef(model_co_manual)[1]/(1-rho)
+b1_co_manual <- coef(model_co_manual)[2]
+cat("Koefisien manual Cochrane-Orcutt:\n")
+cat("b0:", b0_co_manual, "\n")
+cat("b1:", b1_co_manual, "\n")
+```
+### Metode 2: Hildreth-Lu
+
+**Intuisi:** Metode ini lebih sistematis. Ia akan mencoba berbagai kemungkinan nilai ρ dan memilih satu yang menghasilkan **Sum of Squared Errors (SSE) terkecil.**
+
+```{r}
+### Metode Hildreth-Lu
+
+# Definisi fungsi manual Hildreth-Lu
+hildreth.lu.func <- function(r, model){
+  x <- as.vector(model.matrix(model)[,-1])   # ambil prediktor
+  y <- model.response(model.frame(model))    # ambil respon
+  n <- length(y)
+  t <- 2:n
+  
+  # Transformasi variabel dengan rho tertentu
+  y_tr <- y[t] - r*y[t-1]
+  x_tr <- x[t] - r*x[t-1]
+  
+  return(lm(y_tr ~ x_tr))
+}
+
+# Pencarian kasar: rho dari 0.1 s.d. 0.9
+r <- seq(0.1, 0.9, by=0.1)
+tab <- data.frame(
+  rho = r,
+  SSE = sapply(r, function(i) deviance(hildreth.lu.func(i, reg)))
+)
+tab
+
+# Cari rho optimum lebih detail (0.6 s.d. 0.8 dengan step 0.001)
+rOpt <- seq(0.6, 0.8, by=0.001)
+tabOpt <- data.frame(
+  rho = rOpt,
+  SSE = sapply(rOpt, function(i) deviance(hildreth.lu.func(i, reg)))
+)
+rho.opt <- tabOpt$rho[which.min(tabOpt$SSE)]
+cat("Rho optimum:", rho.opt, "\n")
+```
+SSE paling kecil terdapat pada rho = 0.7 dan optimum pada rho = 0.719
+```{r}
+#Grafik SSE optimum
+par(mfrow = c(1,1))
+plot(tab$SSE ~ tab$rho , type = "l", xlab = "Rho", ylab = "SSE")
+abline(v = tabOpt[tabOpt$SSE==min(tabOpt$SSE),"rho"], lty = 2, col="red",lwd=2)
+text(x=0.719, y=0.2667970, labels = "rho=0.719", cex = 0.8)
+```
+```{r}
+hl <- hildreth.lu.func(rho.opt, reg)
+summary(hl)
+
+# Transformasi balik koefisien
+b0 <- coef(hl)[1]/(1-rho.opt)
+b1 <- coef(hl)[2]
+cat("y = ", b0, "+", b1, "* x", sep = "")
+
+```
+```{r}
+#Deteksi autokorelasi
+dwtest(hl)
+```
+##5. Evaluasi Akhir
+```{r}
+# Menghitung SSE untuk setiap model secara manual
+sse_awal <- sum(residuals(reg)^2)
+sse_co <- sum(residuals(co)^2)
+sse_hl <- sum(residuals(hl)^2)
+
+# Membuat tabel perbandingan
+data.frame(
+  Metode = c("Model Awal (Sakit)", "Cochrane-Orcutt (Sehat)", "Hildreth-Lu (Sehat)"),
+  SSE = c(sse_awal, sse_co, sse_hl),
+  DW_Statistic = c(dwtest(reg)$statistic, co$DW[3], dwtest(hl)$statistic)
+)
+
+```
+
+
+
+
