@@ -1,0 +1,337 @@
+---
+title: "Tugas Praktikum 4"
+output: html_document
+date: "2025-09-18"
+---
+
+## White Noise
+```{r}
+set.seed(1234)
+w = rnorm(300)
+ts.plot(w, main="White Noise", ylab="", col="blue")
+```
+```{r}
+par(mfrow=c(1,2))
+acf(w, main="ACF White Noise")
+acf(w, xlim=c(1,20), main="ACF White Noise (Zoomed In)")
+```
+# 1. Model MA
+## Proses MA
+Proses MA dapat dituliskan sebagai berikut:
+
+$$
+y_{t} = c + e_t + \theta_{1}e_{t-1} + \theta_{2}e_{t-2} + \dots + \theta_{q}e_{t-q} = c+{e_t+\sum_{i=1}^p \theta_ie_{t-i}}
+$$
+### Pembangkitan MA(2)
+Akan dicoba membangkitkan proses MA, yaitu MA(2) dengan $\theta1 = 0.4$ dan $\theta2 = 0.6$ sebanyak 300 observasi dan $c=0$. Karena diperlukan satu nilai awal untuk $e_{t-1}$, masukkan nilai pertama white noise sebagai nilai awal tersebut.
+```{r}
+set.seed(1234)
+```
+
+MA(2):
+$$
+y_t = e_t+0.4e_{t-1}+0.6e_{t-2}
+$$
+### MA Manual
+```{r}
+n = 300
+wn = rnorm(n) 
+
+ma2 = rep(NA, n)
+
+ma2[1] = wn[1]                 
+ma2[2] = wn[2] + 0.4*wn[1]     
+
+for(i in 3:n){
+  ma2[i] = wn[i] + 0.4*wn[i-1] + 0.6*wn[i-2]
+}
+
+ma2
+
+```
+Selain menggunakan cara di atas, pembangkitan proses MA(2) dapat dilakukan dengan fungsi `arima.sim()` sebagai berikut.
+
+### Arima.Sim
+```{r}
+ma22 <- arima.sim(
+  model = list(order = c(0,0,2), ma = c(0.4, 0.6)),
+  n = 300
+)
+
+ma22
+
+```
+
+### Plot MA(2)
+```{r}
+ts.plot(ma2, main="MA(2) Manual", ylab="", col="red")
+```
+Berdasarkan plot time series, MA(2) stasioner dalam rataan
+
+### ACF MA(2)
+```{r}
+acf(ma2,lag.max = 20)
+
+```
+Berdasarkan plot ACF, MA cuts off di lag 2
+
+### PACF MA(2)
+```{r}
+pacf(ma2,lag.max = 20)
+```
+Berdasarkan plot PACF, PACF tails off dan membentuk gelombang cosinus
+
+### EACF MA(2)
+```{r}
+TSA::eacf(ma2)
+```
+
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(0) dan ordo MA(2)
+
+###Scatterplot antar lag
+#### Yt dengan Yt-1
+```{r}
+plot(ma2[-1], ma2[-length(ma2)], xlab=expression(y[t-1]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-1]))
+```
+#### Korelasi Yt dengan Yt-1
+```{r}
+cor(ma2[-1], ma2[-length(ma2)])
+```
+Korelasi Yt dengan Yt-1 sebesar 0.5282 mendekati perhitungan manual sebesar 0.395
+
+$$
+\rho_1=\frac{0.64}{1.52}=0.395
+$$
+#### Yt dengan Yt-2
+```{r}
+plot(ma2[-c(1,2)], ma2[-c(length(ma2)-1,length(ma2))], xlab=expression(y[t-2]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-2]))
+```
+#### Korelasi Yt dengan Yt-2
+```{r}
+cor(ma2[-c(1,2)], ma2[-c(length(ma2)-1,length(ma2))])
+```
+Korelasi Yt dengan Yt-2 sebesar 0.4356 mendekati perhitungan manual sebesar 0.395
+$$
+\rho_1=\frac{0.6}{1+1.52}=0.3947
+$$
+#### Yt dengan Yt-3
+```{r}
+plot(ma2[-c(1,2,3)], ma2[-c(length(ma2)-2,length(ma2)-1,length(ma2))], xlab=expression(y[t-3]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-3]))
+```
+#### Korelasi Yt dengan Yt-3
+```{r}
+cor(ma2[-c(1,2,3)], ma2[-c(length(ma2)-2,length(ma2)-1,length(ma2))])
+```
+Korelasi Yt dengan Yt-3 sebesar 0.0854 mendekati perhitungan manual sebesar 0 (Karena k > 3)
+
+### Autokorelasi
+```{r}
+acf(ma2, lag.max = 20, plot = FALSE)$acf
+```
+
+# 2. Model AR
+## Proses AR
+
+Proses AR dapat dituliskan sebagai berikut:
+
+$$ y_{t} = c + e_t + \phi_{1}Y_{t-1} + \phi_{2}Y_{t-2} + \dots + \phi_{q}Y_{t-q} = c+{e_t+\sum_{i=1}^p \phi_iY_{t-i}} $$ Terlihat bahwa $Y_t$ berperan penting dalam pembangkitan proses AR.
+
+### Pembangkitan AR(2)
+Akan dicoba membangkitkan proses AR, yaitu AR(2) dengan $\phi1 = 0.5$ dan $\phi1 = 0.2$ sebanyak 300 observasi dan $c=0$.
+
+```{r}
+set.seed(1234)
+```
+
+Nilai-nilai selanjutnya dapat dicari melalui *loop*. Bentuk loop dapat dilihat dari rumus AR(2) yang hendak dibangkitkan:
+
+$$ Y_t = e_t+0.5Y_{t-1}+0.2Y_{t-2} $$
+### AR Manual
+```{r}
+n = length(wn)
+ar2 = rep(0, n)  
+
+ar2[1] <- wn[1]
+ar2[2] <- wn[2] + 0.5 * ar2[1]
+
+for (i in 3:n) {
+  ar2[i] <- wn[i] + 0.5 * ar2[i-1] + 0.2 * ar2[i-2]
+}
+
+ar2
+```
+### Arima.Sim
+```{r}
+ar3 = arima.sim(
+  model = list(order = c(2,0,0), ar = c(0.5, 0.2)),
+  n = 300
+)
+ar3
+```
+### Plot AR(2)
+```{r}
+ts.plot(ar2, main="AR(2) Manual", ylab="", col="green")
+```
+Dari plot terlihat data stasioner dalam rataan
+
+### ACF AR(2)
+```{r}
+acf(ar2, lag.max = 20)
+```
+Berdasarkan plot ACF, ACF tails off
+
+### PACF AR(2)
+```{r}
+pacf(ar2, lag.max = 20)
+```
+
+Berdasarkan plot PACF, PACF cuts off di lag 2
+
+### EACF AR(2)
+```{r}
+TSA::eacf(ar2)
+```
+Berdasarkan pola segitiga nol pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(0)
+
+### Scatterplot antar lag
+#### Yt dengan Yt-1
+```{r}
+plot(ar2[-1], ar2[-length(ar2)], xlab=expression(y[t-1]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-1]))
+```
+#### Korelasi Yt dengan Yt-1
+```{r}
+cor(ar2[-1], ar2[-length(ar2)])
+```
+Korelasi Yt dengan Yt-1 sebesar 0.7181 mendekati perhitungan manual sebesar $\rho_1=\phi^1=0.625$
+
+#### Yt dengan Yt-2
+```{r}
+plot(ar2[-c(1,2)], ar2[-c(length(ar2)-1,length(ar2))], xlab=expression(y[t-2]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-2]))
+```
+#### Korelasi Yt dengan Yt-2
+```{r}
+cor(ar2[-c(1,2)], ar2[-c(length(ar2)-1,length(ar2))])
+```
+Korelasi Yt dengan Yt-2 sebesar 0.4647 mendekati perhitungan manual sebesar $\rho_2=\phi^2=0.5125$
+
+#### Yt dengan Yt-3
+```{r}
+plot(ar2[-c(1,2,3)], ar2[-c(length(ar2)-2,length(ar2)-1,length(ar2))], xlab=expression(y[t-3]), ylab=expression(y[t]), main=expression("Scatterplot"~y[t]~"dengan"~y[t-3]))
+```
+#### Korelasi Yt dengan Yt-3
+```{r}
+cor(ar2[-c(1,2,3)], ar2[-c(length(ar2)-2,length(ar2)-1,length(ar2))])
+```
+Korelasi Yt dengan Yt-3 sebesar 0.4630 mendekati perhitungan manual sebesar $\rho_3=\phi^3=0.38125$
+### Autokorelasi
+```{r}
+acf(ar2, lag.max = 20, plot = FALSE)$acf
+```
+
+
+# 3. Model ARMA
+## Proses ARMA
+$$
+y_{t} = c + \sum_{i=1}^p \phi_{i}y_{t-i} + \sum_{j=1}^q e_{t-j}+ e_{t}
+$$
+
+### Pembangkitan ARMA(2,2)
+```{r}
+set.seed(1234)
+n = 300
+wn = rnorm(n)
+arma_data = rep(0, n)
+arma_data[1:2] = wn[1:2]
+for(i in 3:n){
+  arma_data[i] = 0.5*arma_data[i-1] + 0.2*arma_data[i-2] + wn[i] + 0.4*wn[i-1] + 0.6*wn[i-2]
+}
+arma_data
+
+```
+### Arima.Sim
+```{r}
+arma2 = arima.sim(
+  model = list(order = c(2,0,2), ar = c(0.5, 0.2), ma = c(0.4, 0.6)),
+  n = 300
+)
+arma2
+```
+### Plot ARMA(2,2)
+```{r}
+ts.plot(arma_data, main="Simulasi ARMA(2,2) Manual", ylab="Yt")
+```
+### Plot ARMA Arima.Sim
+```{r}
+ts.plot(arma2, main = "arima.sim ARMA(2,2)")
+```
+
+### ACF ARMA(2,2)
+```{r}
+acf(arma_data, lag.max = 20, main="ACF ARMA(2,2)")
+```
+```{r}
+acf(arma2, lag.max = 20, main="ACF ARMA(2,2) - arima.sim")
+```
+
+
+Berdasarkan plot ACF, ACF tails off
+
+### PACF ARMA(2,2)
+```{r}
+pacf(arma_data, lag.max = 20)
+```
+### PACF Arima.Sim
+```{r}
+pacf(arma2, lag.max = 20, main="PACF ARMA(2,2)")
+```
+
+### EACF ARMA(2,2)
+```{r}
+TSA::eacf(arma_data)
+```
+### EACF ARMA(2,2) Arima.Sim
+```{r}
+TSA::eacf(arma2)
+```
+### Scatterplot Antar Lag
+#### Yt dengan Yt-1
+```{r}
+yt = arma_data[-1]
+yt_1 = arma_data[-n]
+plot(x = yt, y = yt_1, main="Yt vs Yt-1")
+```
+#### Korelasi 
+```{r}
+cor(yt, yt_1)
+```
+Korelasi antara Yt dengan Yt-1 = 0.8946, mendekati perhitungan teoritis Korelasi Yt dengan Yt-1 sebesar 0.7181 mendekati perhitungan manual sebesar $\rho_1=0.8592$
+
+#### Yt dengan Yt-2
+```{r}
+ytt = arma_data[-c(1,2)]
+yt_2 = arma_data[-c(n-1,n)]
+plot(x = ytt, y = yt_2, main="Yt vs Yt-2")
+
+```
+#### Korelasi 
+```{r}
+cor(ytt, yt_2)
+```
+Korelasi antara Yt dengan Yt-2 = 0.7882, mendekati perhitungan manual sebesar $\rho_2=0.7492$
+
+#### Yt dengan Yt-3
+```{r}
+yttt = arma_data[-c(1,2,3)]
+yt_3 = arma_data[-c(n-2,n-1,n)]
+plot(x = yttt, y = yt_3, main="Yt vs Yt-3")
+```
+#### Korelasi
+```{r}
+cor(yttt, yt_3)
+```
+Korelasi antara Yt dengan Yt-3 = 0.6177, mendekati perhitungan manual sebesar $\rho_3=0.5464$
+### Autokorelasi
+```{r}
+acf(arma_data, lag.max = 20, plot = FALSE)$acf
+```
+
