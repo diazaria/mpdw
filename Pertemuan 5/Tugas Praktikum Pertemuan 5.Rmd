@@ -1,0 +1,266 @@
+---
+title: "Pertemuan 5"
+output: html_document
+date: "2025-09-25"
+---
+
+## Library
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+```
+
+## Data
+
+```{r}
+cf = read.csv("C:/Users/ASUS/Downloads/coffee_prices.csv")
+print(head(cf))
+
+# Potong data untuk baris 401-500
+cf_subset = cf[401:500, ]
+print(head(cf_subset))
+```
+
+### Ubah data menjadi bulanan
+
+```{r}
+cf_subset$Date.Monthly = as.Date(cf_subset$Date..Monthly., format = "%m/%d/%Y")
+cf_subset$MonthYear = format(cf_subset$Date.Monthly, "%m/%Y")
+print(head(cf_subset))
+```
+
+### Ubah data jadi time series
+
+```{r}
+# Tentukan tahun & bulan awal dari data subset
+tahun_awal = as.numeric(format(min(cf_subset$Date.Monthly), "%Y"))
+bulan_awal = as.numeric(format(min(cf_subset$Date.Monthly), "%m"))
+
+# Ubah coffee arabica menjadi harga
+harga = cf_subset$Coffee.Arabica
+
+# Buat time series
+ts_koi = ts(harga, start = c(tahun_awal, bulan_awal), frequency = 12)
+ts_koi
+
+```
+
+## Plot
+
+```{r}
+plot(ts_koi, main = "Harga Kopi Arabika per Kg", ylab = "Harga (USD)", xlab = "Waktu (Bulan)", col = "blue")
+```
+
+## Cek Stasioneritas
+
+```{r}
+mean(ts_koi)
+var(ts_koi)
+```
+
+### ACF
+
+```{r}
+acf(ts_koi, main = "ACF Harga Kopi Arabika")
+```
+
+Dari plot di atas menunjukkan bahwa data tidak stasioner karena nilai ACF menurun secara perlahan.
+
+### Uji ADF
+
+```{r}
+adf.test(ts_koi)
+```
+
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Karena p-value \> 0.05, maka gagal menolak H0 yang artinya terdapat ketidakstasioneran pada data.
+
+### Plot Box-Cox
+
+```{r}
+index = seq(401:500)
+b = boxcox(ts_koi~index, lambda = seq(-1,4,by=1))
+#Nilai Rounded Lambda
+lambda = b$x[which.max(b$y)]
+lambda
+#SK
+b$x[b$y > max(b$y) - 1/2 * qchisq(.95,1)]
+
+```
+
+Plot di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **-0.0404** dan pada selang kepercayaan 95% nilai memiliki batas bawah **-0.54** dan batas atas **0.46**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data tidak stasioner dalam ragam.
+
+## Partisi Data
+
+### Train Data
+```{r}
+train_size = floor(0.8 * length(ts_koi))
+train_data = ts_koi[1:train_size]
+print(train_data)
+mean(train_data)
+var(train_data)
+```
+### Plot Time Series Train Data
+```{r}
+plot.ts(train_data, main = "Train Data Harga Kopi Arabika per Kg", ylab = "Harga (USD)", xlab = "Waktu (Bulan)", col = "blue")
+```
+### ACF Train Data
+```{r}
+acf(train_data, main = "ACF Train Data Harga Kopi Arabika")
+```
+Dari plot di atas menunjukkan bahwa data tidak stasioner karena nilai ACF menurun secara perlahan.
+
+### Uji ADF Train Data
+```{r}
+adf.test(train_data)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+$H_1$ : Data stasioner dalam rataan
+
+Karena p-value \> 0.05, maka gagal menolak H0 yang artinya terdapat ketidakstasioneran pada data.
+
+### Box-Cox Train Data
+```{r}
+idx = seq(401:480)
+bx = boxcox(train_data~idx, lambda = seq(-1,4,by=1))
+#Nilai Rounded Lambda
+lambda = bx$x[which.max(bx$y)]
+lambda
+#SK
+bx$x[bx$y > max(bx$y) - 1/2 * qchisq(.95,1)]
+
+```
+Plot di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **0.06** dan pada selang kepercayaan 95% nilai memiliki batas bawah **-0.59** dan batas atas **0.66**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data tidak stasioner dalam ragam.
+
+### Test Data
+```{r}
+test_data = ts_koi[(train_size + 1):length(ts_koi)]
+print(test_data)
+mean(test_data)
+var(test_data)
+```
+### Plot Time Series Test Data
+```{r}
+ts.plot(test_data, main = "Test Data Harga Kopi Arabika per Kg", ylab = "Harga (USD)", xlab = "Waktu (Bulan)", col = "blue")
+```
+### ACF Test Data
+```{r}
+acf(test_data, main = "ACF Test Data Harga Kopi Arabika")
+```
+Dari plot di atas menunjukkan bahwa data tidak stasioner karena nilai ACF menurun secara perlahan.
+
+### Uji ADF Test Data
+```{r}
+adf.test(test_data)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+$H_1$ : Data stasioner dalam rataan
+
+Karena p-value \> 0.05, maka gagal menolak H0 yang artinya terdapat ketidakstasioneran pada data.
+
+### Box-Cox Test Data
+```{r}
+idy = seq(481:500)
+by = boxcox(test_data~idy, lambda = seq(-1,4,by=1))
+#Nilai Rounded Lambda
+lambda = by$x[which.max(by$y)]
+lambda
+#SK
+by$x[by$y > max(by$y) - 1/2 * qchisq(.95,1)]
+```
+
+Plot di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **-1** dan pada selang kepercayaan 95% nilai memiliki batas bawah **-1** dan batas atas **-0.24**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data tidak stasioner dalam ragam.
+
+## Penanganan
+
+### Transformasi Box-Cox
+```{r}
+library(forecast)
+
+lambda_opt = -0.04
+ts_koi_bc = BoxCox(ts_koi, lambda = lambda_opt)
+
+plot(ts_koi_bc, main = paste("Box-Cox Transform (λ =", round(lambda_opt, 2), ")"),
+     ylab = "Transformed Harga", col = "darkgreen")
+```
+
+#### Plot Setelah Transformasi
+```{r}
+## Plot Box-Cox setelah transformasi
+b = boxcox(ts_koi_bc~index, lambda = seq(-1,4,by=1))
+```
+Karena nilai 1 sudah masuk dalam selang kepercayaan 95%, maka data sudah stasioner dalam ragam.
+
+### Diferensiasi
+```{r}
+ts_koi_diff1 = diff(ts_koi_bc, differences = 1)
+
+plot(ts_koi_diff1, main = "First Differencing after Box-Cox", 
+     ylab = "Δ Harga", col = "red")
+```
+#### Plot ACF dan PACF Setelah Diferensiasi
+```{r}
+# Cek ACF & ADF setelah differencing
+acf(ts_koi_diff1, main = "ACF setelah First Differencing")
+pacf(ts_koi_diff1, main = "PACF setelah First Differencing")
+```
+#### Uji ADF Setelah Diferensiasi
+```{r}
+adf.test(ts_koi_diff1)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+$H_1$ : Data stasioner dalam rataan
+Karena p-value < 0.05, maka tolak H0 yang artinya data sudah stasioner dalam rataan.
+
+## Identifikasi Model
+```{r}
+acf(ts_koi_diff1, main = "ACF setelah differencing 1")
+pacf(ts_koi_diff1, main = "PACF setelah differencing 1")
+library(TSA)
+eacf(ts_koi_diff1)
+title("EACF setelah differencing 1")
+
+```
+```{r}
+fit_arima = Arima(ts_koi, order = c(0, 1, 1), lambda = lambda_opt)  # pakai lambda kalau ada BoxCox
+summary(fit_arima)
+
+```
+## Perbandingan Model
+```{r}
+library(forecast)
+
+# Fit beberapa model ARIMA
+fit1 <- Arima(ts_koi, order = c(0,1,1), lambda = lambda_opt)
+fit2 <- Arima(ts_koi, order = c(1,1,1), lambda = lambda_opt)
+fit3 <- Arima(ts_koi, order = c(2,1,2), lambda = lambda_opt)
+
+# Buat fungsi untuk ambil metrik model
+get_metrics <- function(fit) {
+  err <- accuracy(fit)
+  data.frame(
+    Model = deparse(fit$call),
+    AIC = AIC(fit),
+    BIC = BIC(fit),
+    RMSE = err["Training set","RMSE"],
+    MAE = err["Training set","MAE"],
+    MAPE = err["Training set","MAPE"]
+  )
+}
+
+# Kumpulkan semua model
+results <- rbind(
+  get_metrics(fit1),
+  get_metrics(fit2),
+  get_metrics(fit3)
+)
+
+print(results)
+
+```
